@@ -1,0 +1,91 @@
+/* Base styles */
+.form-input {
+    transition: border-color 0.15s ease-in-out;
+}
+
+.form-input:focus {
+    border-color: #4F46E5;
+    ring: 2px solid #4F46E5;
+}
+
+/* Player search dropdown styles */
+#playerSuggestions {
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+#playerSuggestions::-webkit-scrollbar {
+    width: 6px;
+}
+
+#playerSuggestions::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#playerSuggestions::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 3px;
+}
+
+#playerSuggestions div {
+    transition: background-color 0.2s ease;
+}
+
+#playerSuggestions div:hover {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Active suggestion styling */
+#playerSuggestions .bg-blue-50 {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Results styling */
+.prediction-card {
+    transition: all 0.3s ease;
+}
+
+.prediction-card:hover {
+    transform: translateY(-2px);
+}
+
+.result-high {
+    background-color: #DEF7EC;
+    color: #03543F;
+}
+
+.result-medium {
+    background-color: #FEF3C7;
+    color: #92400E;
+}
+
+.result-low {
+    background-color: #FEE2E2;
+    color: #991B1B;
+}
+
+/* Loading spinner */
+.loader {
+    border: 3px solid #f3f3f3;
+    border-radius: 50%;
+    border-top: 3px solid #4F46E5;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Table styles */
+.recent-games-table tr:nth-child(even) {
+    background-color: rgba(243, 244, 246, 0.5);
+}
+
+.recent-games-table tr:hover {
+    background-color: rgba(243, 244, 246, 0.8);
+}

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Player Props Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-3xl font-bold text-center mb-8">NBA Props Analyzer</h1>
+            
+            <!-- Search Form -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Player Search -->
+                    <div class="relative">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Player</label>
+                        <div class="relative">
+                            <input type="text" 
+                                   id="playerSearch" 
+                                   class="w-full p-2 pl-3 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                   placeholder="Type player name..."
+                                   autocomplete="off">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                                <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div id="playerSuggestions" 
+                             class="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg hidden">
+                        </div>
+                    </div>
+                    
+                    <!-- Prop Type Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Prop Type</label>
+                        <select id="propType" class="w-full p-2 border rounded-md">
+                            <optgroup label="Basic Props">
+                                <option value="points">Points</option>
+                                <option value="assists">Assists</option>
+                                <option value="rebounds">Rebounds</option>
+                                <option value="steals">Steals</option>
+                                <option value="blocks">Blocks</option>
+                                <option value="turnovers">Turnovers</option>
+                                <option value="three_pointers">Three Pointers Made</option>
+                            </optgroup>
+                            <optgroup label="Combined Props">
+                                <option value="pts_reb">Points + Rebounds</option>
+                                <option value="pts_ast">Points + Assists</option>
+                                <option value="ast_reb">Assists + Rebounds</option>
+                                <option value="pts_ast_reb">Points + Assists + Rebounds</option>
+                                <option value="stl_blk">Steals + Blocks</option>
+                            </optgroup>
+                            <optgroup label="Special Props">
+                                <option value="double_double">Double Double</option>
+                                <option value="triple_double">Triple Double</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    
+                    <!-- Line Input -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Line</label>
+                        <input type="number" id="lineInput" 
+                               class="w-full p-2 border rounded-md" 
+                               step="0.5" min="0">
+                    </div>
+                </div>
+                
+                <button id="analyzeProp" 
+                        class="w-full mt-4 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
+                    Analyze Prop
+                </button>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="loading" class="hidden text-center py-4">
+                <div class="loader mx-auto"></div>
+                <p class="mt-2 text-gray-600">Analyzing prop bet...</p>
+            </div>
+            
+            <!-- Results Section -->
+            <div id="results" class="bg-white rounded-lg shadow-lg p-6 hidden">
+                <!-- Stats Overview -->
+                <div class="bg-gray-50 rounded-lg p-6 mb-6">
+                    <h3 class="text-xl font-semibold mb-3">ML Model Analysis</h3>
+                    <div id="mlAnalysis" class="prose">
+                        <p class="text-gray-700 leading-relaxed"></p>
+                        <div class="mt-4 grid grid-cols-2 gap-4">
+                            <div class="bg-white p-4 rounded-lg shadow">
+                                <h4 class="font-semibold mb-2">Classification Model</h4>
+                                <p id="classificationConfidence" class="text-sm"></p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow">
+                                <h4 class="font-semibold mb-2">Regression Model</h4>
+                                <p id="regressionPrediction" class="text-sm"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="text-center">
+                        <h3 class="text-lg font-semibold">Hit Rate</h3>
+                        <p id="hitRate" class="text-3xl font-bold text-blue-500"></p>
+                    </div>
+                    <div class="text-center">
+                        <h3 class="text-lg font-semibold">Average</h3>
+                        <p id="average" class="text-3xl font-bold text-blue-500"></p>
+                    </div>
+                    <div class="text-center">
+                        <h3 class="text-lg font-semibold">Last 5 Average</h3>
+                        <p id="last5Average" class="text-3xl font-bold text-blue-500"></p>
+                    </div>
+                </div>
+                
+                <!-- Recommendation -->
+                <div class="text-center mb-6">
+                    <h3 class="text-xl font-semibold mb-2">Recommendation</h3>
+                    <div id="recommendation" class="text-2xl font-bold"></div>
+                </div>
+                
+                <!-- Performance Chart -->
+                <div class="mt-6">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+
+                <!-- Detailed Statistics -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h3 class="text-lg font-semibold mb-4">Detailed Statistics</h3>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span>Times Over Line:</span>
+                                <span id="timesOver" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Times Under Line:</span>
+                                <span id="timesUnder" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Home Average:</span>
+                                <span id="homeAvg" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Away Average:</span>
+                                <span id="awayAvg" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Maximum Value:</span>
+                                <span id="maxValue" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Minimum Value:</span>
+                                <span id="minValue" class="font-semibold"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trend Analysis -->
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h3 class="text-lg font-semibold mb-4">Trend Analysis</h3>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span>Trend Direction:</span>
+                                <span id="trendDirection" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Value vs Line:</span>
+                                <span id="valueVsLine" class="font-semibold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Edge:</span>
+                                <span id="edge" class="font-semibold"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Games -->
+                <div class="mt-8">
+                    <h3 class="text-lg font-semibold mb-4">Recent Games</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-white">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Opponent</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Result</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentGamesBody" class="divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
