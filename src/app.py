@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-from src.basketball_betting_helper import BasketballBettingHelper
+from .basketball_betting_helper import BasketballBettingHelper
 import logging
 from logging.handlers import RotatingFileHandler
 import os

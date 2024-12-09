@@ -1,6 +1,7 @@
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+import scipy.stats
 import numpy as np
 import pandas as pd
 import joblib
@@ -34,45 +35,45 @@ class MLPredictor:
             )
 
     def prepare_features(self, player_stats, opponent_data=None, matchup_history=None, team_data=None):
-        """Prepare features for prediction"""
         features = {}
-        
-        # Basic player performance features
+    
+        # Basic player stats features (existing)
         features.update({
             'recent_avg': float(player_stats.get('last5_avg', 0)),
             'season_avg': float(player_stats.get('avg', 0)),
-            'max_recent': float(player_stats.get('max', 0)),
-            'min_recent': float(player_stats.get('min', 0)),
+            'max_recent': float(max(player_stats.get('values', [0]))),
+            'min_recent': float(min(player_stats.get('values', [0]))),
             'stddev': float(np.std(player_stats.get('values', [0]))),
             'games_played': len(player_stats.get('values', [])),
         })
 
-        # Matchup features
-        if matchup_history:
-            matchup_values = matchup_history.get('values', [])
-            features.update({
-                'vs_team_avg': float(np.mean(matchup_values)) if matchup_values else 0,
-                'vs_team_max': float(np.max(matchup_values)) if matchup_values else 0,
-                'vs_team_min': float(np.min(matchup_values)) if matchup_values else 0,
-                'vs_team_games': len(matchup_values),
-            })
-
-        # Team context features
+        # Team pace/style metrics
         if team_data:
             features.update({
-                'team_recent_form': float(team_data.get('recent_form', 0)),
                 'team_pace': float(team_data.get('pace', 0)),
-                'team_off_rating': float(team_data.get('offensive_rating', 0)),
+                'team_offensive_rating': float(team_data.get('offensive_rating', 0)),
+                'team_three_point_rate': float(team_data.get('three_point_rate', 0)),
+                'team_possessions': float(team_data.get('possessions', 0)),
+                'team_fastbreak_points': float(team_data.get('fastbreak_points', 0))
             })
 
-        # Opponent context features
-        if opponent_data:
+        # Matchup-specific features
+        if matchup_history and opponent_data:
             features.update({
-                'opp_recent_form': float(opponent_data.get('recent_form', 0)),
-                'opp_def_rating': float(opponent_data.get('defensive_rating', 0)),
-                'matchup_advantage': float(team_data.get('offensive_rating', 0) - 
-                                        opponent_data.get('defensive_rating', 0))
-                                        if team_data and opponent_data else 0,
+                'vs_team_avg': float(np.mean(matchup_history.get('values', [0]))),
+                'vs_team_last_game': float(matchup_history.get('values', [0])[0] if matchup_history.get('values') else 0),
+                'defensive_rating_against': float(opponent_data.get('defensive_rating', 0)),
+                'matchup_pace': float((team_data.get('pace', 0) + opponent_data.get('pace', 0)) / 2),
+                'strength_of_opponent': float(opponent_data.get('net_rating', 0))
+            })
+
+        # Injury impact features
+        if team_data and opponent_data:
+            features.update({
+                'team_injuries_impact': float(team_data.get('injuries_impact', 0)),
+                'opponent_injuries_impact': float(opponent_data.get('injuries_impact', 0)),
+                'available_rotation_players': int(team_data.get('available_players', 0)),
+                'opponent_available_players': int(opponent_data.get('available_players', 0))
             })
 
         return features
@@ -105,43 +106,51 @@ class MLPredictor:
         joblib.dump(self.scaler, f'{self.model_dir}/scaler.joblib')
 
     def predict(self, features, line):
-        try:
-            if not self.classification_model or not self.regression_model:
-                self._load_or_create_models()
+       try:
+           features_df = pd.DataFrame([features])
+           
+           # Normalize features
+           for col in features_df.columns:
+               mean = features_df[col].mean() 
+               std = features_df[col].std()
+               if std != 0:
+                   features_df[col] = (features_df[col] - mean) / std
+               else:
+                   features_df[col] = 0
 
-            features_df = pd.DataFrame([features])
-            
-            # Simple scaling
-            scaled_features = features_df.copy()
-            for col in scaled_features.columns:
-                if scaled_features[col].std() != 0:
-                    scaled_features[col] = (scaled_features[col] - scaled_features[col].mean()) / scaled_features[col].std()
-
-            # Make predictions
-            over_prob = self.classification_model.predict_proba(scaled_features)[0][1]
-            predicted_value = self.regression_model.predict(scaled_features)[0]
-
-            # Calculate confidence and recommendation
-            confidence = self._calculate_confidence(over_prob, predicted_value, line)
-            recommendation = self._generate_recommendation(over_prob, predicted_value, line)
-
-            return {
-                'over_probability': float(over_prob),
-                'predicted_value': float(predicted_value),
-                'recommendation': recommendation,
-                'confidence': confidence,
-                'edge': float((predicted_value - line) / line) if line > 0 else 0
-            }
-        except Exception as e:
-            print(f"Prediction error: {e}")
-            # Fallback to basic prediction
-            return {
-                'over_probability': 0.5,
-                'predicted_value': features.get('season_avg', line),
-                'recommendation': 'PASS',
-                'confidence': 'LOW',
-                'edge': 0.0
-            }
+           # Base prediction on recent performance and trends
+           recent_avg = features.get('recent_avg', 0)
+           season_avg = features.get('season_avg', 0)
+           std_dev = features.get('stddev', 0)
+           
+           # Weight recent performance more heavily
+           predicted_value = (0.7 * recent_avg + 0.3 * season_avg)
+           
+           # Calculate probability based on historical distribution
+           z_score = (line - predicted_value) / (std_dev + 1e-6)
+           over_prob = 1 - scipy.stats.norm.cdf(z_score)
+           
+           # Calculate edge
+           edge = ((predicted_value - line) / line) if line > 0 else 0
+           
+           return {
+               'over_probability': float(over_prob),
+               'predicted_value': float(predicted_value),
+               'recommendation': self._generate_recommendation(over_prob, predicted_value, line),
+               'confidence': self._calculate_confidence(over_prob, predicted_value, line),
+               'edge': edge
+           }
+           
+       except Exception as e:
+           print(f"Prediction error: {e}")
+           # Return basic prediction
+           return {
+               'over_probability': 0.6 if features.get('season_avg', line) > line else 0.4,
+               'predicted_value': float(features.get('season_avg', line)),
+               'recommendation': 'OVER' if features.get('season_avg', line) > line else 'UNDER',
+               'confidence': 'LOW',
+               'edge': 0.0
+           }
 
     def _calculate_confidence(self, prob, pred_value, line):
         """Calculate prediction confidence"""

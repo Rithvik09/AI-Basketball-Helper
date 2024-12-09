@@ -330,9 +330,16 @@ function updateRecentGames(stats, propType, line) {
     const tbody = document.getElementById('recentGamesBody');
     tbody.innerHTML = '';
     
-    const values = propType.includes('_') ? 
-        stats.combined_stats[propType].values : 
-        stats[propType].values;
+    let values;
+    if (propType === 'three_pointers') {
+        values = stats.three_pointers?.values || [];
+    } else if (propType === 'double_double' || propType === 'triple_double') {
+        values = stats[propType]?.values || [];
+    } else if (propType.includes('_')) {
+        values = stats.combined_stats[propType]?.values || [];
+    } else {
+        values = stats[propType]?.values || [];
+    }
     
     values.forEach((value, index) => {
         const row = document.createElement('tr');

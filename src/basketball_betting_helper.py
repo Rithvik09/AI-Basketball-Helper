@@ -17,18 +17,16 @@ class BasketballBettingHelper:
         self.db_name = db_name
         self.ml_predictor = MLPredictor()
         
-        # Set current season based on date
         current_year = datetime.now().year
         current_month = datetime.now().month
         
-        # If we're between January and July, use previous year's season
-        # If we're between August and December, use current year's season
+
         if 1 <= current_month <= 7:
             self.current_season = f"{current_year-1}-{str(current_year)[2:]}"
         else:
             self.current_season = f"{current_year}-{str(current_year+1)[2:]}"
             
-        print(f"Current season set to: {self.current_season}")  # Debug print
+        print(f"Current season set to: {self.current_season}")
         self.create_tables()
         
     def get_db(self):
@@ -40,7 +38,7 @@ class BasketballBettingHelper:
         conn = self.get_db()
         cursor = conn.cursor()
         
-        # Create players table
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS players (
                 id INTEGER PRIMARY KEY,
@@ -204,13 +202,13 @@ class BasketballBettingHelper:
             return None
 
     def _get_stat_dict(self, df, column):
-        """Helper method to create stat dictionary"""
+        values = df[column].tolist()
         return {
-            'values': df[column].tolist(),
+            'values': values,
             'avg': float(df[column].mean()),
             'last5_avg': float(df[column].head().mean()),
-            'max': int(df[column].max()),
-            'min': int(df[column].min())
+            'max': float(df[column].max()),
+            'min': float(df[column].min())
         }
 
     def _get_combined_stat_dict(self, df, columns):
@@ -266,48 +264,59 @@ class BasketballBettingHelper:
 
     def analyze_prop_bet(self, player_id, prop_type, line):
         try:
-            # Get basic stats
             stats = self.get_player_stats(player_id)
             if not stats:
                 return None
 
-            # Get relevant stat values
-            if '_' not in prop_type:
+            # Handle triple doubles, double doubles, and three pointers
+            if prop_type == 'three_pointers':
+                stat_data = {
+                    'values': stats[prop_type]['values'],
+                    'avg': stats[prop_type]['avg'], 
+                    'last5_avg': stats[prop_type]['last5_avg']
+                }
+                trend = stats['trends'].get('fg3m', {})
+            elif prop_type in ['double_double', 'triple_double']:
+                stat_data = {
+                    'values': stats[prop_type]['values'],
+                    'avg': stats[prop_type]['avg'],
+                    'last5_avg': stats[prop_type]['last5_avg']
+                }
+                trend = {} 
+            elif prop_type in ['points', 'assists', 'rebounds', 'steals', 'blocks', 'turnovers']:
                 stat_data = stats[prop_type]
                 trend = stats['trends'].get(prop_type, {})
             else:
                 stat_data = stats['combined_stats'][prop_type]
                 trend = None
 
-            # Calculate basic stats
-            hits = sum(1 for x in stat_data['values'] if x > line)
-            hit_rate = hits / len(stat_data['values']) if stat_data['values'] else 0
-            edge = ((stat_data['avg'] - line) / line) if line > 0 else 0
+            values = stat_data.get('values', [])
+            hits = sum(1 for x in values if x > line)
+            hit_rate = hits / len(values) if values else 0
+            edge = ((stat_data.get('avg', 0) - line) / line) if line > 0 else 0
 
-            # Prepare features for ML prediction
             features = {
-                'recent_avg': float(stat_data['last5_avg']),
-                'season_avg': float(stat_data['avg']),
-                'max_recent': float(stat_data['max']),
-                'min_recent': float(stat_data['min']),
-                'stddev': float(np.std(stat_data['values'])),
-                'games_played': len(stat_data['values']),
+                'recent_avg': float(stat_data.get('last5_avg', 0)),
+                'season_avg': float(stat_data.get('avg', 0)), 
+                'max_recent': float(max(values) if values else 0),
+                'min_recent': float(min(values) if values else 0),
+                'stddev': float(np.std(values) if values else 0),
+                'games_played': len(values),
                 'hit_rate': hit_rate,
                 'edge': edge
             }
 
-            # Get ML prediction
             ml_prediction = self.ml_predictor.predict(features, line)
 
             return {
                 'hit_rate': hit_rate,
-                'average': stat_data['avg'],
-                'last5_average': stat_data['last5_avg'],
+                'average': stat_data.get('avg', 0),
+                'last5_average': stat_data.get('last5_avg', 0),
                 'times_hit': hits,
-                'total_games': len(stat_data['values']),
+                'total_games': len(values),
                 'edge': edge,
                 'trend': trend,
-                'values': stat_data['values'],
+                'values': values,
                 'predicted_value': ml_prediction['predicted_value'],
                 'over_probability': ml_prediction['over_probability'],
                 'recommendation': ml_prediction['recommendation'],
@@ -329,7 +338,7 @@ class BasketballBettingHelper:
                 vs_team_id=opponent_team_id,
                 season=self.current_season
             ).get_data_frames()[0]
-            
+        
             return {
                 'values': vs_team['PTS'].tolist(),
                 'avg': float(vs_team['PTS'].mean()),
@@ -344,10 +353,10 @@ class BasketballBettingHelper:
         try:
             # Get team's recent games
             team_games = TeamGameLog(team_id=team_id).get_data_frames()[0]
-        
+    
             # Get current roster status
             roster = CommonTeamRoster(team_id=team_id).get_data_frames()[0]
-        
+    
             return {
                 'pace': float(team_games['PTS'].mean()),
                 'offensive_rating': self._calculate_offensive_rating(team_games),
@@ -362,16 +371,16 @@ class BasketballBettingHelper:
     def _calculate_offensive_rating(self, games_df):
         """Calculate team's offensive rating"""
         possessions = (games_df['FGA'] + 0.4 * games_df['FTA'] - 1.07 * 
-                    (games_df['OREB'] / (games_df['OREB'] + games_df['DREB'])) * 
-                    (games_df['FGA'] - games_df['FGM']) + games_df['TOV'])
+                (games_df['OREB'] / (games_df['OREB'] + games_df['DREB'])) * 
+                (games_df['FGA'] - games_df['FGM']) + games_df['TOV'])
     
         return (games_df['PTS'] / possessions * 100).mean()
 
     def _calculate_defensive_rating(self, games_df):
         """Calculate team's defensive rating"""
         possessions = (games_df['FGA'] + 0.4 * games_df['FTA'] - 1.07 * 
-                    (games_df['OREB'] / (games_df['OREB'] + games_df['DREB'])) * 
-                    (games_df['FGA'] - games_df['FGM']) + games_df['TOV'])
+                (games_df['OREB'] / (games_df['OREB'] + games_df['DREB'])) * 
+                (games_df['FGA'] - games_df['FGM']) + games_df['TOV'])
     
         return (games_df['OPP_PTS'] / possessions * 100).mean()
 
